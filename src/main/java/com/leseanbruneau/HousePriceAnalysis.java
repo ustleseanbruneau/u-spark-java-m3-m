@@ -3,6 +3,8 @@ package com.leseanbruneau;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.ml.evaluation.RegressionEvaluator;
+import org.apache.spark.ml.feature.OneHotEncoderEstimator;
+import org.apache.spark.ml.feature.StringIndexer;
 import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.ml.param.ParamMap;
 import org.apache.spark.ml.regression.LinearRegression;
@@ -30,7 +32,6 @@ public class HousePriceAnalysis {
 				.csv("src/main/resources/kc_house_data.csv");
 		
 		//csvData.printSchema();
-		
 		//csvData.show();
 		
 //		VectorAssembler vectorAssembler = new VectorAssembler();
@@ -40,27 +41,35 @@ public class HousePriceAnalysis {
 		csvData = csvData.withColumn("sqft_above_percentage", col("sqft_above").divide(col("sqft_living")));
 		csvData.show();
 		
+		StringIndexer conditionIndexer = new StringIndexer();
+		conditionIndexer.setInputCol("condition");
+		conditionIndexer.setOutputCol("conditionIndex");
+		csvData = conditionIndexer.fit(csvData).transform(csvData);
+		
+		StringIndexer gradeIndexer = new StringIndexer();
+		gradeIndexer.setInputCol("grade");
+		gradeIndexer.setOutputCol("gradeIndex");
+		csvData = gradeIndexer.fit(csvData).transform(csvData);
+		
+		StringIndexer zipcodeIndexer = new StringIndexer();
+		zipcodeIndexer.setInputCol("zipcode");
+		zipcodeIndexer.setOutputCol("zipcodeIndex");
+		csvData = zipcodeIndexer.fit(csvData).transform(csvData);
+		
+		OneHotEncoderEstimator encoder = new OneHotEncoderEstimator();
+		encoder.setInputCols(new String[] {"conditionIndex","gradeIndex","zipcodeIndex"});
+		encoder.setOutputCols(new String[] {"conditionVector","gradeVector","zipcodeVector"});
+		csvData = encoder.fit(csvData).transform(csvData);
+		
+		
 		VectorAssembler vectorAssembler = new VectorAssembler()
-				//.setInputCols(new String[] {"bedrooms","bathrooms","sqft_living"})
-				.setInputCols(new String[] {"bedrooms","bathrooms","sqft_living","sqft_above_percentage","floors"})
+				.setInputCols(new String[] {"bedrooms","bathrooms","sqft_living","sqft_above_percentage","floors","conditionVector","gradeVector","zipcodeVector"})
 				.setOutputCol("features");
 		
 		Dataset<Row> modelInputData = vectorAssembler.transform(csvData)
 				.select("price","features")
 				.withColumnRenamed("price", "label");
 
-		//modelInputData.show();
-		
-//		Dataset<Row> [] trainingAndTestData = modelInputData.randomSplit(new double[] {0.8, 0.2});
-//		Dataset<Row> trainingData = trainingAndTestData[0];
-//		Dataset<Row> testData = trainingAndTestData[1];
-		
-//		LinearRegressionModel model = new LinearRegression()
-//				.setMaxIter(10)
-//				.setRegParam(0.3)
-//				.setElasticNetParam(0.8)
-//				.fit(trainingData);
-		
 		Dataset<Row> [] dataSplits = modelInputData.randomSplit(new double[] {0.8, 0.2});
 		Dataset<Row> trainingAndTestData = dataSplits[0];
 		Dataset<Row> holdOutData = dataSplits[1];
